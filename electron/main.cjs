@@ -37,13 +37,17 @@ const pendingRoutes = [];
 // ---------- Deep links ----------
 // movieplex://host/path/manifest.json      -> install https://host/path/manifest.json
 // movieplex:///detail/movie/tt0111161      -> open that route in the app
+// Links come from any website, so they may only open browsing pages (never the player, which
+// would start fetching whatever stream the link names, or settings).
+const DEEP_LINK_ROUTES = /^\/(detail|discover|search|library|calendar|addons)(\/|\?|$)/;
 function routeFromDeepLink(link) {
   if (!link || !link.startsWith(`${DEEP_LINK_SCHEME}://`)) return null;
   const rest = link.slice(`${DEEP_LINK_SCHEME}://`.length);
   if (/manifest\.json(\?.*)?$/.test(rest)) {
     return `/addons?addon=${encodeURIComponent('https://' + rest.replace(/^\/+/, ''))}`;
   }
-  return '/' + rest.replace(/^\/+/, '');
+  const route = '/' + rest.replace(/^\/+/, '');
+  return DEEP_LINK_ROUTES.test(route) ? route : '/';
 }
 
 function openRoute(route) {
@@ -101,18 +105,58 @@ function saveWindowState(win) {
 }
 
 // ---------- Static file serving for app:// ----------
+// Only the app's own scripts may run (no inline or injected ones), so content from addons or
+// subtitles can never execute code. Media, images and addon requests may come from anywhere.
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "worker-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  'img-src * data: blob:',
+  'media-src * data: blob:',
+  'connect-src * data: blob: ws: wss:',
+  'frame-src https://www.youtube-nocookie.com https://www.youtube.com',
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 function registerAppProtocol() {
-  protocol.handle('app', (request) => {
+  protocol.handle('app', async (request) => {
     const { pathname } = new URL(request.url);
     const requested = path.normalize(path.join(DIST_DIR, decodeURIComponent(pathname)));
     // Refuse anything that escapes dist/; unknown paths fall back to the SPA entry.
-    if (!requested.startsWith(DIST_DIR)) return new Response('Forbidden', { status: 403 });
+    if (requested !== DIST_DIR && !requested.startsWith(DIST_DIR + path.sep)) {
+      return new Response('Forbidden', { status: 403 });
+    }
     const file = fs.existsSync(requested) && fs.statSync(requested).isFile()
       ? requested
       : path.join(DIST_DIR, 'index.html');
-    return net.fetch(pathToFileURL(file).toString());
+    const res = await net.fetch(pathToFileURL(file).toString());
+    const headers = new Headers(res.headers);
+    headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+    return new Response(res.body, { status: res.status, headers });
   });
 }
+
+// Electron grants every permission by default; the app only needs fullscreen and copying.
+const ALLOWED_PERMISSIONS = new Set(['fullscreen', 'clipboard-sanitized-write']);
+function restrictPermissions() {
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) =>
+    callback(ALLOWED_PERMISSIONS.has(permission)),
+  );
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+}
+
+/** IPC is only for the app's own page, not for frames inside it (e.g. the YouTube player). */
+function fromApp(event) {
+  const frame = event.senderFrame;
+  return !!mainWindow && event.sender === mainWindow.webContents && frame === mainWindow.webContents.mainFrame && isAppUrl(frame.url);
+}
+/** ipcMain.handle / ipcMain.on that ignore anything but the app's own page. */
+const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => (fromApp(event) ? fn(...args) : null));
+const listen = (channel, fn) => ipcMain.on(channel, (event, ...args) => fromApp(event) && fn(...args));
 
 // YouTube's embed player refuses to load (Error 153) without an http(s) Referer,
 // which pages served from app:// don't send. Supply the embed's own origin.
@@ -189,11 +233,11 @@ function createWindow() {
 
 // ---------- Casting ----------
 const cast = new CastManager((channel, payload) => mainWindow?.webContents.send(channel, payload));
-ipcMain.handle('cast:devices', () => {
+handle('cast:devices', () => {
   cast.startDiscovery();
   return cast.listDevices();
 });
-ipcMain.handle('cast:load', async (_event, media) => {
+handle('cast:load', async (media) => {
   try {
     await cast.load(media);
     return { ok: true };
@@ -201,27 +245,27 @@ ipcMain.handle('cast:load', async (_event, media) => {
     return { ok: false, error: err.message };
   }
 });
-ipcMain.on('cast:control', (_event, action, value) => cast.control(action, value));
+listen('cast:control', (action, value) => cast.control(action, value));
 app.on('before-quit', () => cast.dispose());
 
 // ---------- Audio conversion (Dolby / DTS -> AAC) ----------
 const transcoder = new Transcoder();
-ipcMain.handle('media:resolve', (_event, url, headers) => transcoder.inspect(url, headers).catch(() => ({ url, audio: null })));
-ipcMain.handle('media:open', (_event, url, headers) => transcoder.open(url, headers).catch(() => null));
-ipcMain.handle('media:prepare', (_event, url, headers) => transcoder.prepare(url, headers).catch(() => null));
-ipcMain.handle('media:startPoint', (_event, base, start, audio) => transcoder.startPoint(base, start, audio).catch(() => start));
+handle('media:resolve', (url, headers) => transcoder.inspect(url, headers).catch(() => ({ url, audio: null })));
+handle('media:open', (url, headers) => transcoder.open(url, headers).catch(() => null));
+handle('media:prepare', (url, headers) => transcoder.prepare(url, headers).catch(() => null));
+handle('media:startPoint', (base, start, audio) => transcoder.startPoint(base, start, audio).catch(() => start));
 app.on('before-quit', () => transcoder.dispose());
 
 // ---------- Updates ----------
 const updater = new Updater((state) => mainWindow?.webContents.send('update:state', state));
-ipcMain.handle('update:get', () => updater.state);
-ipcMain.handle('update:check', () => updater.check());
-ipcMain.handle('update:install', () => updater.install());
+handle('update:get', () => updater.state);
+handle('update:check', () => updater.check());
+handle('update:install', () => updater.install());
 app.on('before-quit', () => updater.dispose());
 
 // ---------- Skip intro timings ----------
 // IntroDB only allows CORS from its own site, so the renderer asks the main process.
-ipcMain.handle('segments:get', async (_event, ref) => {
+handle('segments:get', async (ref) => {
   const { imdbId, season, episode } = ref ?? {};
   if (!/^tt\d+$/.test(imdbId) || !Number.isInteger(season) || !Number.isInteger(episode)) return null;
   try {
@@ -235,8 +279,7 @@ ipcMain.handle('segments:get', async (_event, ref) => {
   }
 });
 
-ipcMain.on('renderer-ready', (event) => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) return;
+listen('renderer-ready', () => {
   rendererReady = true;
   while (pendingRoutes.length) mainWindow.webContents.send('navigate', pendingRoutes.shift());
 });
@@ -304,6 +347,7 @@ app.whenReady().then(() => {
   // Earlier builds kept a playback timing log for diagnosing slow starts; remove it.
   fs.rm(path.join(app.getPath('userData'), 'playback-timing.log'), { force: true }, () => {});
   registerAppProtocol();
+  restrictPermissions();
   fixYouTubeReferer();
   buildMenu();
   createWindow();

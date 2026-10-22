@@ -75,7 +75,9 @@ class Updater {
       }
       const asset = process.platform === 'darwin' && process.arch === 'arm64' ? feed.mac : null;
       const info = { version: String(feed.version), notes: String(feed.notes ?? '') };
-      if (!asset?.url || !/^[0-9a-f]{64}$/.test(asset.sha256 ?? '')) {
+      // Only this repo's own release downloads, with a checksum, are installed.
+      const fromRepo = String(asset?.url ?? '').startsWith(`https://github.com/${this.repo}/releases/download/`);
+      if (!fromRepo || !/^[0-9a-f]{64}$/.test(asset.sha256 ?? '')) {
         // No package this copy can install itself: point to the release page instead.
         this.set({ state: 'available', ...info, page: `https://github.com/${this.repo}/releases/latest` });
         return this.state;

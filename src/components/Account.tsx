@@ -94,8 +94,14 @@ export function AccountPanel() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || password.length < 6) {
-      setMessage({ kind: 'error', text: 'Enter your email and a password of at least 6 characters.' });
+    if (!email.trim() || !password) {
+      setMessage({ kind: 'error', text: 'Enter your email and password.' });
+      return;
+    }
+    // New passwords: at least 8 characters with a letter and a number (matches the Supabase
+    // Auth settings in the README; sign-in still accepts older, shorter passwords).
+    if (mode === 'signup' && (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password))) {
+      setMessage({ kind: 'error', text: 'Use a password of at least 8 characters with a letter and a number.' });
       return;
     }
     setBusy(true);

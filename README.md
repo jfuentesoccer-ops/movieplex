@@ -144,6 +144,23 @@ src/pages/    Board, Discover, Library, Search, Calendar, Detail, Player, Addons
 
 MoviePlex hosts no content. Everything shown comes from the addons you install.
 
+## Security
+
+- **Accounts:** Supabase Auth (passwords stored as bcrypt hashes by Supabase). Every table has row-level
+  security: a signed-in user can only read and write their own rows, and signed-out visitors can't read
+  anything. Size limits and a 10,000-item cap per profile stop one account from filling the database
+  (`supabase/schema.sql`).
+- **Recommended Supabase settings** (Dashboard → Authentication → Providers → Email): minimum password length
+  8 with letters and digits required (the app asks for the same), and *Confirm email* on once you have a custom
+  SMTP sender. Leaked-password protection needs the Pro plan.
+- **Desktop app:** the page runs sandboxed with context isolation and a strict Content Security Policy (only
+  the app's own scripts run, so addon or subtitle content can't execute code). It can't open other sites
+  inside the app or use the camera, microphone or location. `movieplex://` links can only open browsing
+  pages. ffmpeg only reads http(s) stream addresses.
+- **Updates** come only from this repo's GitHub releases and are checked against the SHA-256 in
+  `update.json`. Keep two-factor authentication on the GitHub account that publishes them.
+- **Profile PINs** are a convenience lock (like Nuvio's), not real security.
+
 ## License
 
 MoviePlex is free software under the [GNU General Public License v3.0 or later](LICENSE).
