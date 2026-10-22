@@ -52,7 +52,7 @@ export function AccountPanel() {
       <div className="account-panel">
         <p className="muted">
           Accounts aren’t set up in this build, so everything stays on this device. To turn on sign-in and sync,
-          add a Supabase project (see README › Accounts).
+          add a Supabase project (see README › Building from source).
         </p>
       </div>
     );
