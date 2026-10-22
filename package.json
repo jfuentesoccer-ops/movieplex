@@ -1,0 +1,127 @@
+{
+  "name": "movieplex",
+  "productName": "MoviePlex",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A media center powered by Stremio-compatible addons",
+  "author": "MoviePlex",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "movieplexUpdates": {
+    "repo": "jfuentesoccer-ops/movieplex"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "desktop:dev": "concurrently -k -n web,app \"vite --port 5180 --strictPort\" \"wait-on tcp:5180 && electron . --dev-url=http://localhost:5180\"",
+    "desktop": "npm run build && electron .",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "icons": "electron scripts/make-icons.cjs",
+    "release": "node scripts/release.cjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^10.0.6",
+    "electron": "^44.9.2",
+    "electron-builder": "^26.15.3",
+    "hls.js": "^1.7.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.6",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "wait-on": "^9.5.1",
+    "zustand": "^4.5.7"
+  },
+  "build": {
+    "appId": "com.movieplex.app",
+    "productName": "MoviePlex",
+    "copyright": "MoviePlex",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "MoviePlex",
+        "schemes": [
+          "movieplex"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "identity": null,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "MoviePlex looks for Chromecast devices on your network so you can cast to your TV.",
+        "NSBonjourServices": [
+          "_googlecast._tcp"
+        ]
+      }
+    },
+    "dmg": {
+      "title": "MoviePlex"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "icon": "build/icon.png"
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ]
+  },
+  "dependencies": {
+    "bonjour-service": "^1.4.4",
+    "castv2-client": "^1.2.0",
+    "ffmpeg-static": "^5.3.0"
+  },
+  "allowScripts": {
+    "ffmpeg-static@5.3.0": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jfuentesoccer-ops/movieplex.git"
+  }
+}
