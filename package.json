@@ -2,7 +2,7 @@
   "name": "movieplex",
   "productName": "MoviePlex",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A media center powered by Stremio-compatible addons",
   "author": "MoviePlex",
   "license": "GPL-3.0-or-later",
