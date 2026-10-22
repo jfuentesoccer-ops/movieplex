@@ -86,11 +86,11 @@ const api = async (url, options = {}) => {
       body: fs.readFileSync(path.join(out, name)),
     });
   }
-  await api(`https://api.github.com/repos/${repo}/releases/${release.id}`, {
+  const published = await api(`https://api.github.com/repos/${repo}/releases/${release.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ draft: false, make_latest: 'true' }),
   });
-  console.log(`Published ${release.html_url.replace('/untagged-', '/tag/')}`);
+  console.log(`Published ${published.html_url}`);
 })().catch((err) => {
   console.error(err.message);
   process.exit(1);
